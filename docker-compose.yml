@@ -1,0 +1,136 @@
+services:
+
+  # ─────────────────────────────────────────
+  # POSTGRESQL — Airflow metadata only
+  # BigQuery is the actual warehouse
+  # ─────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres
+    restart: unless-stopped
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-airflow_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-airflow_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-airflow_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - youtube_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow_user -d airflow_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─────────────────────────────────────────
+  # APACHE AIRFLOW — Webserver
+  # UI: http://localhost:8080
+  # Login: admin / admin
+  # ─────────────────────────────────────────
+  airflow-webserver:
+    image: apache/airflow:2.9.1
+    container_name: airflow-webserver
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER:-airflow_user}:${POSTGRES_PASSWORD:-airflow_pass}@postgres/${POSTGRES_DB:-airflow_db}
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW__CORE__FERNET_KEY:-ZmDfcTF7_60GrrY167zsiPd67pEvs0aGOv2oasOM1Pg=}
+      AIRFLOW__WEBSERVER__SECRET_KEY: youtube_pipeline_secret
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+      _AIRFLOW_DB_MIGRATE: "true"
+      _AIRFLOW_WWW_USER_CREATE: "true"
+      _AIRFLOW_WWW_USER_USERNAME: ${AIRFLOW_ADMIN_USER:-admin}
+      _AIRFLOW_WWW_USER_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD:-admin}
+      # GCP credentials passed through to Airflow
+      GOOGLE_APPLICATION_CREDENTIALS: /opt/airflow/gcp_credentials.json
+      GCP_PROJECT_ID: ${GCP_PROJECT_ID}
+      GCP_BUCKET_NAME: ${GCP_BUCKET_NAME}
+      BIGQUERY_DATASET_RAW: ${BIGQUERY_DATASET_RAW:-youtube_kenya_raw}
+      BIGQUERY_DATASET_STAGING: ${BIGQUERY_DATASET_STAGING:-youtube_kenya_staging}
+      BIGQUERY_DATASET_MARTS: ${BIGQUERY_DATASET_MARTS:-youtube_kenya_marts}
+      YOUTUBE_API_KEY: ${YOUTUBE_API_KEY}
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./gcp_credentials.json:/opt/airflow/gcp_credentials.json:ro
+      - airflow_logs:/opt/airflow/logs
+    ports:
+      - "8080:8080"
+    command: webserver
+    networks:
+      - youtube_net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+
+  # ─────────────────────────────────────────
+  # APACHE AIRFLOW — Scheduler
+  # ─────────────────────────────────────────
+  airflow-scheduler:
+    image: apache/airflow:2.9.1
+    container_name: airflow-scheduler
+    restart: unless-stopped
+    depends_on:
+      airflow-webserver:
+        condition: service_healthy
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER:-airflow_user}:${POSTGRES_PASSWORD:-airflow_pass}@postgres/${POSTGRES_DB:-airflow_db}
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW__CORE__FERNET_KEY:-ZmDfcTF7_60GrrY167zsiPd67pEvs0aGOv2oasOM1Pg=}
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      GOOGLE_APPLICATION_CREDENTIALS: /opt/airflow/gcp_credentials.json
+      GCP_PROJECT_ID: ${GCP_PROJECT_ID}
+      GCP_BUCKET_NAME: ${GCP_BUCKET_NAME}
+      YOUTUBE_API_KEY: ${YOUTUBE_API_KEY}
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./gcp_credentials.json:/opt/airflow/gcp_credentials.json:ro
+      - airflow_logs:/opt/airflow/logs
+    command: scheduler
+    networks:
+      - youtube_net
+
+  # ─────────────────────────────────────────
+  # INGESTION — YouTube API + GCS uploader
+  # Runs once then exits (one-shot)
+  # For scheduled runs use Airflow
+  # ─────────────────────────────────────────
+  ingestion:
+    build:
+      context: ./ingestion
+      dockerfile: Dockerfile
+    container_name: youtube_ingestion
+    restart: "no"
+    environment:
+      YOUTUBE_API_KEY: ${YOUTUBE_API_KEY}
+      GCP_PROJECT_ID: ${GCP_PROJECT_ID}
+      GCP_BUCKET_NAME: ${GCP_BUCKET_NAME}
+      GOOGLE_APPLICATION_CREDENTIALS: /app/gcp_credentials.json
+      BIGQUERY_DATASET_RAW: ${BIGQUERY_DATASET_RAW:-youtube_kenya_raw}
+    volumes:
+      - ./gcp_credentials.json:/app/gcp_credentials.json:ro
+      - ./data:/app/data
+    networks:
+      - youtube_net
+
+# ─────────────────────────────────────────
+# VOLUMES
+# ─────────────────────────────────────────
+volumes:
+  postgres_data:
+  airflow_logs:
+
+# ─────────────────────────────────────────
+# NETWORK
+# ─────────────────────────────────────────
+networks:
+  youtube_net:
+    driver: bridge
