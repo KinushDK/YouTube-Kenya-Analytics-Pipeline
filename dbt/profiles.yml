@@ -1,0 +1,12 @@
+youtube_kenya:
+  target: dev
+  outputs:
+    dev:
+      type: bigquery
+      method: service-account
+      project: youtube-kenya-analytics-506007
+      dataset: youtube_kenya
+      keyfile: D:\Personnal\YouTube_Kenya_Analytics_Pipeline\gcp_credentials.json
+      location: US
+      threads: 4
+      timeout_seconds: 300

@@ -1,0 +1,27 @@
+version: 2
+
+sources:
+  - name: youtube_kenya_raw
+    database: youtube-kenya-analytics-506007
+    schema: youtube_kenya_raw
+    description: "Raw YouTube API data loaded by the ingestion script"
+    tables:
+      - name: channel_snapshots
+        description: "Daily snapshot of channel stats from YouTube API"
+        columns:
+          - name: channel_id
+            tests: [not_null]
+          - name: snapshot_date
+            tests: [not_null]
+          - name: subscriber_count
+            tests: [not_null]
+
+      - name: video_snapshots
+        description: "Video metadata and stats fetched from YouTube API"
+        columns:
+          - name: video_id
+            tests: [not_null]
+          - name: channel_id
+            tests: [not_null]
+          - name: snapshot_date
+            tests: [not_null]

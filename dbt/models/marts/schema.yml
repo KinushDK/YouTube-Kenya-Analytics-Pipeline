@@ -1,0 +1,125 @@
+version: 2
+
+models:
+
+  # ── STAGING ────────────────────────────────────────────────
+
+  - name: stg_channels
+    description: >
+      Cleaned channel snapshots from the YouTube API.
+      One row per channel per snapshot date.
+      Deduplicates multiple runs on the same day.
+    columns:
+      - name: channel_id
+        tests: [not_null]
+      - name: channel_name
+        tests: [not_null]
+      - name: snapshot_date
+        tests: [not_null]
+      - name: subscriber_count
+        tests: [not_null]
+
+  - name: stg_videos
+    description: >
+      Cleaned video snapshots from the YouTube API.
+      One row per video per snapshot date.
+      Includes derived time columns for dashboard grouping.
+    columns:
+      - name: video_id
+        tests: [not_null]
+      - name: channel_id
+        tests: [not_null]
+      - name: snapshot_date
+        tests: [not_null]
+      - name: view_count
+        tests: [not_null]
+
+  # ── INTERMEDIATE ───────────────────────────────────────────
+
+  - name: int_video_engagement
+    description: >
+      Adds engagement rate calculations to video snapshots.
+      Like rate, comment rate, engagement rate, and performance
+      tiers. Only includes videos with at least 1 view.
+    columns:
+      - name: video_id
+        tests: [not_null]
+      - name: engagement_tier
+        tests:
+          - accepted_values:
+              values: ['VIRAL', 'HIGH', 'MEDIUM', 'LOW']
+      - name: view_tier
+        tests:
+          - accepted_values:
+              values: ['MEGA', 'VIRAL', 'HIGH', 'MEDIUM', 'LOW']
+
+  # ── MARTS ──────────────────────────────────────────────────
+
+  - name: dim_channel
+    description: >
+      Channel dimension table. One row per channel.
+      Contains current channel attributes and subscriber rank.
+      Updated on every dbt run with latest snapshot.
+    columns:
+      - name: channel_id
+        tests: [unique, not_null]
+      - name: channel_name
+        tests: [not_null]
+      - name: subscriber_rank
+        tests: [not_null]
+      - name: audience_tier
+        tests:
+          - accepted_values:
+              values: ['Mega (1M+)', 'Large (500K+)', 'Medium (100K+)', 'Small (<100K)']
+
+  - name: dim_video
+    description: >
+      Video dimension table. One row per unique video.
+      Contains static video metadata -- title, category,
+      published date, duration. Stats are in fact table.
+    columns:
+      - name: video_id
+        tests: [unique, not_null]
+      - name: channel_id
+        tests: [not_null]
+      - name: duration_category
+        tests:
+          - accepted_values:
+              values: ['Short (<1 min)', 'Brief (1-5 min)', 'Standard (5-15 min)', 'Long (15-30 min)', 'Extended (30+ min)']
+
+  - name: fact_video_performance
+    description: >
+      Central fact table. One row per video per snapshot date.
+      Contains all performance metrics and engagement calculations.
+      Partitioned by snapshot_date for query efficiency.
+      Clustered by channel_id and category_name.
+    columns:
+      - name: snapshot_id
+        tests: [unique, not_null]
+      - name: video_id
+        tests: [not_null]
+      - name: channel_id
+        tests: [not_null]
+      - name: snapshot_date
+        tests: [not_null]
+      - name: view_count
+        tests: [not_null]
+      - name: engagement_tier
+        tests:
+          - accepted_values:
+              values: ['VIRAL', 'HIGH', 'MEDIUM', 'LOW']
+
+  - name: fact_channel_daily
+    description: >
+      Daily channel performance fact table.
+      One row per channel per snapshot date.
+      Tracks subscriber growth, views added, and new videos
+      over time. Used for the subscriber growth trend chart.
+      Partitioned by snapshot_date, clustered by channel_id.
+    columns:
+      - name: daily_snapshot_id
+        tests: [unique, not_null]
+      - name: channel_id
+        tests: [not_null]
+      - name: snapshot_date
+        tests: [not_null]
