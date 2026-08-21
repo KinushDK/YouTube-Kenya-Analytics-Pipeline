@@ -210,6 +210,8 @@ curl http://localhost:8080/health
 
 **Budget Alerts** — a $1 budget alert is configured in GCP Billing. Any unexpected cost triggers an immediate email notification before charges accumulate.
 
+
+![Monitoring Layers](screenshots/monitoring_layers.png)
 ---
 
 ## Dashboard Screenshots
@@ -251,9 +253,7 @@ Video length distribution (63.3% Brief), upload timing heatmap (Sunday afternoon
 
 ---
 
-## Monitoring and Observability
 
-![Monitoring Layers](screenshots/monitoring_layers.png)
 
 ## Data Model
 
