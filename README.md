@@ -251,6 +251,10 @@ Video length distribution (63.3% Brief), upload timing heatmap (Sunday afternoon
 
 ---
 
+## Monitoring and Observability
+
+![Monitoring Layers](screenshots/monitoring_layers.png)
+
 ## Data Model
 
 ```
